@@ -287,29 +287,3 @@ app.listen(PORT, () => {
 ║  🚀 READY!                     ║
 ╚════════════════════════════════╝
     `);
-});
-```
-
-Click **"Commit changes"**
-
----
-
-## **STEP 7: Deploy Backend to Railway**
-
-1. Go to: **https://railway.app**
-2. Click **"New Project"**
-3. Click **"Deploy from GitHub repo"**
-4. Select **`story-generator-backend`**
-5. Click **"Deploy Now"**
-
----
-
-## **STEP 8: Add Environment Variables**
-
-1. In Railway, click **"Variables"** tab
-2. Click **"+ New Variable"**
-3. Add your API keys:
-```
-GEMINI_KEY_1 = paste_your_first_gemini_key_here
-GEMINI_KEY_2 = paste_your_second_gemini_key_here
-GEMINI_KEY_3 = paste_your_third_gemini_key_here
