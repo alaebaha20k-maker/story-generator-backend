@@ -7,263 +7,288 @@ const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-class KeyManager {
-    constructor() {
-        this.keys = [];
-        this.currentIndex = 0;
-        this.usage = {};
-        this.blocked = {};
-        
-        for (let i = 1; i <= 10; i++) {
-            const key = process.env[`GEMINI_KEY_${i}`];
-            if (key && key.trim()) {
-                this.keys.push(key.trim());
-                this.usage[key] = 0;
-                this.blocked[key] = false;
-            }
-        }
-        
-        console.log(`Loaded ${this.keys.length} API keys`);
-    }
-    
-    getKey() {
-        if (this.keys.length === 0) throw new Error('No API keys configured');
-        
-        let attempts = 0;
-        while (attempts < this.keys.length) {
-            const key = this.keys[this.currentIndex];
-            if (!this.blocked[key]) {
-                this.usage[key]++;
-                console.log(`Key ${this.currentIndex + 1} used ${this.usage[key]} times`);
-                this.currentIndex = (this.currentIndex + 1) % this.keys.length;
-                return key;
-            }
-            this.currentIndex = (this.currentIndex + 1) % this.keys.length;
-            attempts++;
-        }
-        throw new Error('All keys rate-limited');
-    }
-    
-    blockKey(key) {
-        this.blocked[key] = true;
-        console.log('Key blocked, switching to next key');
-        setTimeout(() => { this.blocked[key] = false; }, 60000);
-    }
-}
-
-const keyManager = new KeyManager();
-
-async function callGemini(prompt, retries = 0) {
-    const maxRetries = 3;
-    const apiKey = keyManager.getKey();
-    
-    try {
-        console.log(`Calling Gemini API, attempt ${retries + 1}`);
-        
-        const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
-            {
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: {
-                    temperature: 0.95,
-                    maxOutputTokens: 65536,
-                    topP: 0.95,
-                    topK: 64
-                }
-            },
-            { timeout: 120000 }
-        );
-        
-        const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (!text) throw new Error('Invalid response');
-        
-        console.log(`Generated ${text.length} characters`);
-        return text;
-        
-    } catch (error) {
-        if (error.response?.status === 429 || error.response?.status === 503) {
-            keyManager.blockKey(apiKey);
-            if (retries < maxRetries) {
-                await new Promise(r => setTimeout(r, 2000));
-                return callGemini(prompt, retries + 1);
-            }
-        }
-        throw error;
-    }
-}
-
+// Middleware
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// Rate limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 50
+    max: 100,
+    message: 'Too many requests, please try again later.'
 });
 app.use('/api/', limiter);
 
-app.get('/', (req, res) => {
-    res.json({
-        status: 'online',
-        message: 'Story Generator API',
-        version: '1.0.0',
-        keys: keyManager.keys.length
-    });
-});
-
-app.get('/api/health', (req, res) => {
-    res.json({
-        status: 'online',
-        keys: keyManager.keys.length
-    });
-});
-
-app.post('/api/generate', async (req, res) => {
-    try {
-        const { niche, tone, styleExample, title, plot, extraInstructions, targetLength } = req.body;
-        
-        if (!title || !niche || !tone || !styleExample || !plot) {
-            return res.status(400).json({ success: false, error: 'Missing required fields' });
-        }
-        
-        if (styleExample.length < 500) {
-            return res.status(400).json({ success: false, error: 'Style example too short (min 500 chars)' });
-        }
-        
-        console.log(`Generating story: ${title}`);
-        
-        const length = targetLength || 60000;
-        let chunks, charsPerChunk;
-        
-        if (length <= 10000) { chunks = 2; charsPerChunk = 6000; }
-        else if (length <= 30000) { chunks = 2; charsPerChunk = 15000; }
-        else if (length <= 60000) { chunks = 3; charsPerChunk = 20000; }
-        else if (length <= 70000) { chunks = 3; charsPerChunk = 25000; }
-        else { chunks = 3; charsPerChunk = 35000; }
-        
-        const generatedChunks = [];
-        
-        for (let i = 0; i < chunks; i++) {
-            const partNum = i + 1;
-            let prompt;
-            
-            if (i === 0) {
-                prompt = `You are a MASTER storyteller creating ${tone} content in the ${niche} niche.
-
-TARGET: EXACTLY ${charsPerChunk.toLocaleString()} characters (Part ${partNum}/${chunks})
-
-STYLE REFERENCE (MATCH EXACTLY):
-${styleExample.substring(0, 5000)}
-
-STORY DETAILS:
-Title: ${title}
-Plot: ${plot}
-${extraInstructions ? `Instructions: ${extraInstructions}` : ''}
-
-${chunks === 1 ? 'Write COMPLETE story.' : `Part ${partNum}/${chunks} - Write OPENING with hook.`}
-
-CRITICAL RULES:
-- NO labels or headers
-- NO name changes
-- Match style EXACTLY
-- Create UNIQUE hook contextual to story
-- All 5 senses
-- Natural dialogue
-- Show emotions physically
-- Varied sentences
-- Build tension
-
-WRITE EXACTLY ${charsPerChunk.toLocaleString()} CHARACTERS!
-
-Begin (no title):`;
-            } else {
-                const prev = generatedChunks[i-1].split(/[.!?]/).filter(s => s.trim().length > 20).slice(-8).join('. ') + '.';
-                
-                prompt = `Continue SEAMLESSLY. Part ${partNum}/${chunks}.
-
-PREVIOUS ENDED:
-"${prev}"
-
-TARGET: EXACTLY ${charsPerChunk.toLocaleString()} characters
-
-${partNum === chunks ? 'FINAL PART - Complete with satisfying ending!' : `Part ${partNum} - Continue tension.`}
-
-- Continue where previous ended
-- Same names and personalities
-- Same style and tone
-- Natural flow
-
-${partNum === chunks ? 'ENDING: Wrap all threads, character arc, emotional satisfaction, strong close.' : ''}
-
-WRITE ${charsPerChunk.toLocaleString()} CHARACTERS!
-
-Continue:`;
-            }
-            
-            const chunk = await callGemini(prompt);
-            generatedChunks.push(chunk);
-            console.log(`Part ${partNum}/${chunks}: ${chunk.length} chars`);
-        }
-        
-        const finalScript = generatedChunks.join('\n\n');
-        console.log(`Total generated: ${finalScript.length} chars`);
-        
-        res.json({
-            success: true,
-            script: finalScript,
-            stats: {
-                totalChars: finalScript.length,
-                totalWords: Math.round(finalScript.length / 5),
-                chunks: chunks
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error:', error.message);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
-app.post('/api/auto-generate', async (req, res) => {
-    try {
-        const { title, niche, tone } = req.body;
-        
-        if (!title || !niche || !tone) {
-            return res.status(400).json({ success: false, error: 'Missing data' });
-        }
-        
-        console.log(`Auto-generating setup for: ${title}`);
-        
-        const prompt = `Generate story setup for:
-
-Title: "${title}"
-Niche: ${niche}
-Tone: ${tone}
-
-Return JSON:
-{
-  "characters": [{"name": "Full Name", "age": number, "role": "description"}],
-  "location": "Specific place, year",
-  "concept": "2-3 sentence concept"
+// Load API keys from environment
+const apiKeys = [];
+for (let i = 1; i <= 10; i++) {
+    const key = process.env[`GEMINI_KEY_${i}`];
+    if (key) apiKeys.push(key);
 }
 
-Make contextual, realistic. 2-3 characters max.`;
-        
-        const result = await callGemini(prompt);
-        const jsonMatch = result.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error('No valid JSON');
-        
-        const setup = JSON.parse(jsonMatch[0]);
-        res.json({ success: true, setup: setup });
-        
-    } catch (error) {
-        console.error('Auto-gen error:', error.message);
-        res.status(500).json({ success: false, error: error.message });
+let currentKeyIndex = 0;
+
+function getNextApiKey() {
+    if (apiKeys.length === 0) {
+        throw new Error('No API keys configured');
     }
+    const key = apiKeys[currentKeyIndex];
+    currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
+    return key;
+}
+
+// Enhanced prompts with quality control
+function buildStoryPrompt(title, niche, tone, plot, styleExample, extraInstructions, targetLength) {
+    return `You are a professional story writer. Create a HIGH-QUALITY, CONSISTENT story with NO ERRORS.
+
+**CRITICAL RULES - FOLLOW EXACTLY:**
+1. **CHARACTER NAMES:** Once you choose a character's name, NEVER change it. Use the SAME name throughout the entire story.
+2. **NO REPETITION:** Never repeat the same paragraph or sentence twice.
+3. **CONSISTENCY:** Keep all details (names, places, events) consistent throughout.
+4. **PACING:** Develop relationships and plot points gradually, not rushed.
+5. **ORIGINALITY:** Avoid clichés. Create unexpected twists and unique solutions.
+6. **CHARACTER DEPTH:** Show character emotions and motivations through actions and thoughts.
+
+**STORY REQUIREMENTS:**
+- Title: "${title}"
+- Genre: ${niche}
+- Tone: ${tone}
+- Plot: ${plot}
+- Target Length: ${targetLength} characters (write until you reach this length naturally)
+- Style: Match this writing style exactly:
+${styleExample}
+
+${extraInstructions ? `Additional Instructions: ${extraInstructions}` : ''}
+
+**QUALITY CHECKLIST (verify before finishing):**
+✓ Character names stay consistent
+✓ No repeated paragraphs
+✓ Relationships develop naturally over time
+✓ Plot twists are surprising but logical
+✓ Emotional depth in character decisions
+✓ Vivid, unique descriptions (no generic phrases)
+✓ Proper story structure: Setup → Conflict → Climax → Resolution
+
+**NOW WRITE THE COMPLETE STORY:**`;
+}
+
+function buildReviewPrompt(story, title, niche) {
+    return `You are a professional story editor. Review this ${niche} story titled "${title}" and identify ALL errors and weaknesses.
+
+**CHECK FOR:**
+1. Character name inconsistencies (did names change?)
+2. Repeated paragraphs or sentences
+3. Rushed character development or relationships
+4. Plot holes or logical inconsistencies
+5. Cliché or predictable elements
+6. Weak emotional depth
+7. Poor pacing issues
+
+**STORY TO REVIEW:**
+${story}
+
+**PROVIDE:**
+1. List of specific errors found (with line references if possible)
+2. Quality score (1-10)
+3. Specific suggestions for improvement
+
+Format your response as:
+ERRORS:
+[list each error]
+
+SCORE: [1-10]
+
+SUGGESTIONS:
+[specific improvements needed]`;
+}
+
+function buildFixPrompt(story, reviewFeedback, title, niche, tone) {
+    return `You are a professional story editor. Fix this story based on the review feedback.
+
+**ORIGINAL STORY:**
+${story}
+
+**REVIEW FEEDBACK:**
+${reviewFeedback}
+
+**YOUR TASK:**
+Fix ALL identified errors while maintaining the story's essence. Specifically:
+1. Fix any character name inconsistencies (choose ONE name and use it throughout)
+2. Remove any repeated paragraphs or text
+3. Develop rushed relationships more naturally (add scenes, internal thoughts)
+4. Replace clichés with original ideas
+5. Add emotional depth to character decisions
+6. Improve pacing where needed
+7. Keep the ${tone} tone and ${niche} genre
+
+**CRITICAL:** Return ONLY the complete fixed story. No explanations, no notes, just the story text.
+
+**WRITE THE COMPLETE FIXED STORY NOW:**`;
+}
+
+async function callGeminiAPI(prompt, apiKey, maxRetries = 3) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            const response = await axios.post(url, {
+                contents: [{
+                    parts: [{ text: prompt }]
+                }],
+                generationConfig: {
+                    temperature: 0.9,
+                    topK: 40,
+                    topP: 0.95,
+                    maxOutputTokens: 8192,
+                }
+            }, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 120000
+            });
+
+            if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                return response.data.candidates[0].content.parts[0].text;
+            }
+            throw new Error('Invalid response format');
+        } catch (error) {
+            if (attempt === maxRetries - 1) throw error;
+            if (error.response?.status === 429) {
+                await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+            } else {
+                throw error;
+            }
+        }
+    }
+}
+
+async function generateStoryInChunks(title, niche, tone, plot, styleExample, extraInstructions, targetLength) {
+    const chunkSize = Math.min(30000, targetLength);
+    const numChunks = Math.ceil(targetLength / chunkSize);
+    let fullStory = '';
+    let previousContext = '';
+
+    for (let i = 0; i < numChunks; i++) {
+        const isFirstChunk = i === 0;
+        const isLastChunk = i === numChunks - 1;
+        
+        let chunkPrompt;
+        if (isFirstChunk) {
+            chunkPrompt = buildStoryPrompt(title, niche, tone, plot, styleExample, extraInstructions, chunkSize);
+        } else {
+            chunkPrompt = `Continue this ${niche} story. Maintain consistency with previous part.
+
+**PREVIOUS CONTEXT:**
+${previousContext}
+
+**CONTINUE THE STORY (write ${chunkSize} more characters):**
+- Keep the SAME character names
+- Maintain the ${tone} tone
+- ${isLastChunk ? 'BRING THE STORY TO A SATISFYING CONCLUSION' : 'Continue building tension and development'}
+
+Write naturally and seamlessly from where it left off:`;
+        }
+
+        const apiKey = getNextApiKey();
+        const chunk = await callGeminiAPI(chunkPrompt, apiKey);
+        fullStory += chunk;
+        previousContext = chunk.slice(-2000);
+
+        if (fullStory.length >= targetLength && !isLastChunk) break;
+    }
+
+    return fullStory;
+}
+
+// Main generation endpoint with review system
+app.post('/api/generate', async (req, res) => {
+    try {
+        const { title, niche, tone, plot, styleExample, extraInstructions, targetLength = 60000 } = req.body;
+
+        if (!title || !niche || !tone || !plot || !styleExample) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        console.log(`[STEP 1] Generating initial story: ${title}`);
+        
+        // Step 1: Generate story
+        let story = await generateStoryInChunks(
+            title, niche, tone, plot, styleExample, extraInstructions, targetLength
+        );
+
+        console.log(`[STEP 2] Reviewing story quality...`);
+        
+        // Step 2: Review the story
+        const reviewPrompt = buildReviewPrompt(story, title, niche);
+        const apiKey = getNextApiKey();
+        const reviewFeedback = await callGeminiAPI(reviewPrompt, apiKey);
+
+        console.log(`[REVIEW FEEDBACK]:\n${reviewFeedback.substring(0, 500)}...`);
+
+        // Step 3: Check if fixes are needed
+        const needsFix = reviewFeedback.includes('ERRORS:') && 
+                        !reviewFeedback.includes('ERRORS:\nNone') &&
+                        !reviewFeedback.includes('ERRORS: None');
+
+        if (needsFix) {
+            console.log(`[STEP 3] Errors found, fixing story...`);
+            
+            // Fix the story
+            const fixPrompt = buildFixPrompt(story, reviewFeedback, title, niche, tone);
+            const fixApiKey = getNextApiKey();
+            story = await callGeminiAPI(fixPrompt, fixApiKey);
+            
+            console.log(`[STEP 3] Story fixed successfully!`);
+        } else {
+            console.log(`[STEP 3] No errors found, story is good!`);
+        }
+
+        // Calculate stats
+        const stats = {
+            totalChars: story.length,
+            totalWords: story.split(/\s+/).length,
+            chunks: Math.ceil(targetLength / 30000)
+        };
+
+        res.json({
+            success: true,
+            script: story,
+            stats,
+            reviewPerformed: true,
+            errorsFixed: needsFix
+        });
+
+    } catch (error) {
+        console.error('Generation error:', error);
+        res.status(500).json({
+            error: error.message || 'Failed to generate story',
+            success: false
+        });
+    }
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'ready',
+        apiKeys: apiKeys.length,
+        timestamp: new Date().toISOString()
+    });
+});
+
+app.get('/', (req, res) => {
+    res.json({
+        service: 'AI Story Generator Backend',
+        status: 'running',
+        apiKeys: apiKeys.length,
+        endpoints: {
+            generate: '/api/generate',
+            health: '/api/health'
+        }
+    });
 });
 
 app.listen(PORT, () => {
-    console.log('Story Generator API is running on port ' + PORT);
-    console.log('API Keys loaded: ' + keyManager.keys.length);
-    console.log('Status: READY');
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`✅ API Keys loaded: ${apiKeys.length}`);
 });
