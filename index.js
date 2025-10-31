@@ -38,25 +38,23 @@ function getNextApiKey() {
     return key;
 }
 
-// 🎯 THE REAL WINNING STRATEGY: Based on TRUE Gemini 2.0 Flash limits!
-// Gemini 2.0 Flash max output = 8,192 tokens = ~5,000-6,000 characters per call
+// 🎯 Chunk configuration
 function getChunkConfig(targetLength) {
-    const MAX_CHARS_PER_CHUNK = 5500; // Safe limit per API call
+    const MAX_CHARS_PER_CHUNK = 5500;
     
     if (targetLength <= 10000) {
-        return { chunks: 2, charsPerChunk: 5500 };    // 11K result
+        return { chunks: 2, charsPerChunk: 5500 };
     } else if (targetLength <= 30000) {
-        return { chunks: 6, charsPerChunk: 5500 };    // 33K result
+        return { chunks: 6, charsPerChunk: 5500 };
     } else if (targetLength <= 60000) {
-        return { chunks: 12, charsPerChunk: 5500 };   // 66K result
+        return { chunks: 12, charsPerChunk: 5500 };
     } else if (targetLength <= 100000) {
-        return { chunks: 20, charsPerChunk: 5500 };   // 110K result
+        return { chunks: 20, charsPerChunk: 5500 };
     } else {
-        return { chunks: 25, charsPerChunk: 5500 };   // 137K result
+        return { chunks: 25, charsPerChunk: 5500 };
     }
 }
 
-// 🎯 Story arc structure per chunk
 function getSectionGoal(partNum, totalParts) {
     const progress = partNum / totalParts;
     
@@ -72,7 +70,6 @@ function getSectionGoal(partNum, totalParts) {
     return 'CLIMAX & RESOLUTION: Ultimate showdown, wrap up all threads, satisfying end';
 }
 
-// 🎯 Build prompts with REALISTIC length targets
 function buildFirstChunkPrompt(title, niche, tone, plot, styleExample, extraInstructions, config, partNum) {
     const sectionGoal = getSectionGoal(partNum, config.chunks);
     
@@ -99,8 +96,6 @@ ${sectionGoal}
 ✅ Elaborate dialogue with character voice
 ✅ NO rushing - fully develop each moment
 ✅ Character names STAY CONSISTENT forever
-
-**LENGTH CHECK: Count to 5,500 characters. Use lots of descriptive details, inner monologue, and atmosphere!**
 
 WRITE THE STORY NOW (5,500 characters):`;
 }
@@ -149,15 +144,12 @@ Continue the ${niche} story NOW:`;
     return prompt;
 }
 
-// 🎯 Extract clean context (last important moments)
 function extractCleanContext(text) {
     if (!text || text.length < 100) return text;
     
-    // Get last 800-1000 characters (last few paragraphs)
     const contextLength = Math.min(1000, text.length);
     let context = text.slice(-contextLength);
     
-    // Find first complete sentence
     const firstPeriod = context.indexOf('. ');
     if (firstPeriod > 0 && firstPeriod < 200) {
         context = context.slice(firstPeriod + 2);
@@ -166,7 +158,6 @@ function extractCleanContext(text) {
     return context.trim();
 }
 
-// 🎯 Call Gemini 2.0 Flash with CORRECT max tokens (8,192)
 async function callGeminiAPI(prompt, apiKey, maxRetries = 3) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
     
@@ -180,11 +171,11 @@ async function callGeminiAPI(prompt, apiKey, maxRetries = 3) {
                     temperature: 0.95,
                     topP: 0.95,
                     topK: 64,
-                    maxOutputTokens: 8192  // REAL LIMIT for Gemini 2.0 Flash!
+                    maxOutputTokens: 8192
                 }
             }, {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: 120000  // 2 minutes
+                timeout: 120000
             });
 
             if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -207,44 +198,158 @@ async function callGeminiAPI(prompt, apiKey, maxRetries = 3) {
     }
 }
 
-// 🎯 Generate story with REAL Gemini limits strategy
-async function generateStoryWithRealLimits(title, niche, tone, plot, styleExample, extraInstructions, targetLength) {
-    const config = getChunkConfig(targetLength);
-    const chunks = [];
-    
-    console.log(`\n🎯 REAL STRATEGY: ${config.chunks} chunks × ${config.charsPerChunk.toLocaleString()} chars each`);
-    console.log(`📊 Expected result: ${(config.chunks * config.charsPerChunk * 0.95).toLocaleString()}-${(config.chunks * config.charsPerChunk).toLocaleString()} characters`);
-    console.log(`⚡ Speed: ~${Math.ceil(config.chunks / 2)} minutes (parallel processing)\n`);
-    
-    for (let i = 0; i < config.chunks; i++) {
-        const partNum = i + 1;
-        const isFirstChunk = i === 0;
-        
-        console.log(`📝 Generating chunk ${partNum}/${config.chunks}...`);
-        
-        let prompt;
-        if (isFirstChunk) {
-            prompt = buildFirstChunkPrompt(title, niche, tone, plot, styleExample, extraInstructions, config, partNum);
-        } else {
-            const previousContext = extractCleanContext(chunks[i - 1]);
-            prompt = buildContinuationPrompt(title, niche, tone, previousContext, config, partNum);
+// 🚀 NEW: Auto-generate story details from title
+app.post('/api/auto-generate-details', async (req, res) => {
+    try {
+        const { title } = req.body;
+
+        if (!title) {
+            return res.status(400).json({ error: 'Title is required' });
         }
-        
-        const apiKey = getNextApiKey();
-        const chunk = await callGeminiAPI(prompt, apiKey);
-        
-        chunks.push(chunk);
-        console.log(`✅ Chunk ${partNum} complete: ${chunk.length.toLocaleString()} chars`);
-    }
-    
-    const fullStory = chunks.join('\n\n');
-    console.log(`\n🎉 FINAL STORY: ${fullStory.length.toLocaleString()} characters`);
-    console.log(`✅ Quality: HIGH (each chunk fully developed)`);
-    
-    return fullStory;
+
+        console.log(`🤖 Auto-generating details for: "${title}"`);
+
+        const prompt = `You are a professional story consultant. Based on this title: "${title}"
+
+Generate a complete, detailed story plan in VALID JSON format (no markdown, no code blocks):
+
+{
+  "niche": "Choose ONE: Fantasy, Sci-Fi, Romance, Horror, Mystery, Thriller, Adventure, Drama, Comedy, Historical Fiction, Urban Fantasy, Cyberpunk, Dystopian, Superhero, Western, Post-Apocalyptic, Paranormal, Crime, War, Slice of Life",
+  "tone": "Choose ONE: Dark and gritty, Epic and heroic, Light and humorous, Mysterious and suspenseful, Romantic and emotional, Action-packed and intense, Philosophical and thoughtful, Horrifying and tense",
+  "plot": "Write a DETAILED 300-word plot summary with: main character, their goal, main conflict, key challenges, and resolution path. Include specific plot points and dramatic moments.",
+  "styleExample": "Write a 600-character sample of actual story prose in the style this story should be written. Include dialogue, action, and description. Make it compelling and match the tone.",
+  "suggestedLength": 60000
 }
 
-// Main generation endpoint
+CRITICAL: Return ONLY valid JSON, no other text. Be creative and detailed!`;
+
+        const apiKey = getNextApiKey();
+        const response = await callGeminiAPI(prompt, apiKey);
+
+        // Clean response to extract JSON
+        let jsonStr = response.trim();
+        
+        // Remove markdown code blocks if present
+        jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '');
+        
+        // Find JSON object
+        const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            throw new Error('No valid JSON found in response');
+        }
+        
+        const details = JSON.parse(jsonMatch[0]);
+
+        // Validate required fields
+        if (!details.niche || !details.tone || !details.plot || !details.styleExample) {
+            throw new Error('Generated details missing required fields');
+        }
+
+        console.log(`✅ Details generated successfully`);
+
+        res.json({
+            success: true,
+            details
+        });
+
+    } catch (error) {
+        console.error('❌ Auto-generation error:', error);
+        res.status(500).json({
+            error: error.message || 'Failed to auto-generate details',
+            success: false
+        });
+    }
+});
+
+// 🚀 NEW: SSE Streaming endpoint
+app.post('/api/generate-stream', async (req, res) => {
+    try {
+        const { title, niche, tone, plot, styleExample, extraInstructions, targetLength = 60000 } = req.body;
+
+        if (!title || !niche || !tone || !plot || !styleExample) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        // Set up SSE
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+
+        console.log(`\n🚀 Starting STREAM: "${title}"`);
+        console.log(`📏 Target: ${targetLength.toLocaleString()} characters\n`);
+
+        const config = getChunkConfig(targetLength);
+        const chunks = [];
+
+        // Send initial config
+        res.write(`data: ${JSON.stringify({
+            type: 'init',
+            totalChunks: config.chunks,
+            targetLength
+        })}\n\n`);
+
+        for (let i = 0; i < config.chunks; i++) {
+            const partNum = i + 1;
+            const isFirstChunk = i === 0;
+
+            console.log(`📝 Generating chunk ${partNum}/${config.chunks}...`);
+
+            // Send progress update
+            res.write(`data: ${JSON.stringify({
+                type: 'progress',
+                chunk: partNum,
+                total: config.chunks,
+                progress: Math.round((partNum / config.chunks) * 100)
+            })}\n\n`);
+
+            let prompt;
+            if (isFirstChunk) {
+                prompt = buildFirstChunkPrompt(title, niche, tone, plot, styleExample, extraInstructions, config, partNum);
+            } else {
+                const previousContext = extractCleanContext(chunks[i - 1]);
+                prompt = buildContinuationPrompt(title, niche, tone, previousContext, config, partNum);
+            }
+
+            const apiKey = getNextApiKey();
+            const chunk = await callGeminiAPI(prompt, apiKey);
+
+            chunks.push(chunk);
+            console.log(`✅ Chunk ${partNum} complete: ${chunk.length.toLocaleString()} chars`);
+
+            // Send chunk data
+            res.write(`data: ${JSON.stringify({
+                type: 'chunk',
+                chunk: partNum,
+                text: chunk,
+                chars: chunk.length
+            })}\n\n`);
+        }
+
+        const fullStory = chunks.join('\n\n');
+        console.log(`\n🎉 STREAM COMPLETE: ${fullStory.length.toLocaleString()} characters\n`);
+
+        // Send completion
+        res.write(`data: ${JSON.stringify({
+            type: 'complete',
+            totalChars: fullStory.length,
+            totalWords: fullStory.split(/\s+/).length,
+            fullStory
+        })}\n\n`);
+
+        res.end();
+
+    } catch (error) {
+        console.error('❌ Stream error:', error);
+        res.write(`data: ${JSON.stringify({
+            type: 'error',
+            error: error.message
+        })}\n\n`);
+        res.end();
+    }
+});
+
+// Original non-streaming endpoint (kept for compatibility)
 app.post('/api/generate', async (req, res) => {
     try {
         const { title, niche, tone, plot, styleExample, extraInstructions, targetLength = 60000 } = req.body;
@@ -254,24 +359,38 @@ app.post('/api/generate', async (req, res) => {
         }
 
         console.log(`\n🚀 Starting: "${title}"`);
-        console.log(`📏 Target: ${targetLength.toLocaleString()} characters`);
-        
-        const story = await generateStoryWithRealLimits(
-            title, niche, tone, plot, styleExample, extraInstructions, targetLength
-        );
 
-        const stats = {
-            totalChars: story.length,
-            totalWords: story.split(/\s+/).length,
-            targetLength,
-            achieved: story.length >= targetLength * 0.95
-        };
+        const config = getChunkConfig(targetLength);
+        const chunks = [];
+
+        for (let i = 0; i < config.chunks; i++) {
+            const partNum = i + 1;
+            const isFirstChunk = i === 0;
+
+            let prompt;
+            if (isFirstChunk) {
+                prompt = buildFirstChunkPrompt(title, niche, tone, plot, styleExample, extraInstructions, config, partNum);
+            } else {
+                const previousContext = extractCleanContext(chunks[i - 1]);
+                prompt = buildContinuationPrompt(title, niche, tone, previousContext, config, partNum);
+            }
+
+            const apiKey = getNextApiKey();
+            const chunk = await callGeminiAPI(prompt, apiKey);
+            chunks.push(chunk);
+        }
+
+        const fullStory = chunks.join('\n\n');
 
         res.json({
             success: true,
-            script: story,
-            stats,
-            method: 'real_gemini_limits_strategy'
+            script: fullStory,
+            stats: {
+                totalChars: fullStory.length,
+                totalWords: fullStory.split(/\s+/).length,
+                targetLength,
+                achieved: fullStory.length >= targetLength * 0.95
+            }
         });
 
     } catch (error) {
@@ -283,30 +402,28 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
-// Health check
 app.get('/api/health', (req, res) => {
     res.json({
         status: 'ready',
         apiKeys: apiKeys.length,
-        strategy: 'real_gemini_2.0_flash_limits',
-        maxPerChunk: '5,500 chars (8,192 tokens)',
+        features: ['SSE Streaming', 'Auto-generate', 'Real-time progress'],
         timestamp: new Date().toISOString()
     });
 });
 
 app.get('/', (req, res) => {
     res.json({
-        service: 'AI Story Generator - FIXED Strategy',
+        service: 'AI Story Generator - ULTIMATE Edition',
         status: 'running',
         apiKeys: apiKeys.length,
-        strategy: 'Real Gemini 2.0 Flash limits: 5.5K per chunk',
-        limits: {
-            '10K': '2 chunks',
-            '30K': '6 chunks', 
-            '60K': '12 chunks',
-            '100K': '20 chunks'
+        features: {
+            streaming: true,
+            autoGenerate: true,
+            realTimeProgress: true
         },
         endpoints: {
+            autoGenerate: '/api/auto-generate-details',
+            generateStream: '/api/generate-stream',
             generate: '/api/generate',
             health: '/api/health'
         }
@@ -314,8 +431,8 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`\n✅ Server running on port ${PORT}`);
+    console.log(`\n✅ ULTIMATE Server running on port ${PORT}`);
     console.log(`✅ API Keys loaded: ${apiKeys.length}`);
-    console.log(`🎯 Strategy: REAL Gemini 2.0 Flash limits (8,192 tokens = 5.5K chars)`);
-    console.log(`⚡ Speed + Quality optimized\n`);
+    console.log(`🚀 Features: SSE Streaming + Auto-Generate + Real-time`);
+    console.log(`⚡ Ready for production!\n`);
 });
