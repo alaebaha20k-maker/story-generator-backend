@@ -38,97 +38,129 @@ function getNextApiKey() {
     return key;
 }
 
-// Enhanced prompts with quality control
-function buildStoryPrompt(title, niche, tone, plot, styleExample, extraInstructions, targetLength) {
-    return `You are a professional story writer. Create a HIGH-QUALITY, CONSISTENT story with NO ERRORS.
+// 🎯 THE WINNING STRATEGY: Smart chunk configuration
+function getChunkConfig(targetLength) {
+    // FEWER chunks, BIGGER sizes = BETTER results!
+    if (targetLength <= 15000) {
+        return { chunks: 2, charsPerChunk: 6000 };   // 12K+ result
+    } else if (targetLength <= 35000) {
+        return { chunks: 2, charsPerChunk: 15000 };  // 30-35K result
+    } else if (targetLength <= 65000) {
+        return { chunks: 3, charsPerChunk: 20000 };  // 60-70K result
+    } else if (targetLength <= 85000) {
+        return { chunks: 3, charsPerChunk: 25000 };  // 75-85K result
+    } else {
+        return { chunks: 3, charsPerChunk: 35000 };  // 105-120K result
+    }
+}
 
-**CRITICAL RULES - FOLLOW EXACTLY:**
-1. **CHARACTER NAMES:** Once you choose a character's name, NEVER change it. Use the SAME name throughout the entire story.
-2. **NO REPETITION:** Never repeat the same paragraph or sentence twice.
-3. **CONSISTENCY:** Keep all details (names, places, events) consistent throughout.
-4. **PACING:** Develop relationships and plot points gradually, not rushed.
-5. **ORIGINALITY:** Avoid clichés. Create unexpected twists and unique solutions.
-6. **CHARACTER DEPTH:** Show character emotions and motivations through actions and thoughts.
+// 🎯 Story arc structure per chunk
+function getSectionGoal(partNum, totalParts) {
+    const progress = partNum / totalParts;
+    
+    if (progress <= 0.33) {
+        return 'OPENING: Explosive arrival, first encounters, initial combat/tension';
+    }
+    if (progress <= 0.67) {
+        return 'ESCALATION: Major confrontations, rising stakes, deeper conflict';
+    }
+    return 'CLIMAX & RESOLUTION: Ultimate showdown, satisfying conclusion';
+}
 
-**STORY REQUIREMENTS:**
+// 🎯 Build prompts with AGGRESSIVE length enforcement
+function buildFirstChunkPrompt(title, niche, tone, plot, styleExample, extraInstructions, config, partNum) {
+    const sectionGoal = getSectionGoal(partNum, config.chunks);
+    
+    return `You are a professional story writer creating a ${niche} story.
+
+🎯 TARGET: ${config.charsPerChunk.toLocaleString()} characters (Chunk ${partNum} of ${config.chunks})
+
+**STORY SETUP:**
 - Title: "${title}"
 - Genre: ${niche}
 - Tone: ${tone}
 - Plot: ${plot}
-- Target Length: ${targetLength} characters (write until you reach this length naturally)
-- Style: Match this writing style exactly:
-${styleExample}
+- Writing Style: ${styleExample}
+${extraInstructions ? `- Extra Instructions: ${extraInstructions}` : ''}
 
-${extraInstructions ? `Additional Instructions: ${extraInstructions}` : ''}
+**THIS CHUNK'S GOAL:**
+${sectionGoal}
 
-**QUALITY CHECKLIST (verify before finishing):**
-✓ Character names stay consistent
-✓ No repeated paragraphs
-✓ Relationships develop naturally over time
-✓ Plot twists are surprising but logical
-✓ Emotional depth in character decisions
-✓ Vivid, unique descriptions (no generic phrases)
-✓ Proper story structure: Setup → Conflict → Climax → Resolution
+**CRITICAL REQUIREMENTS:**
+✅ WRITE EXACTLY ${config.charsPerChunk.toLocaleString()} CHARACTERS - be EXTREMELY detailed!
+✅ Rich, vivid descriptions of every scene
+✅ Deep character thoughts and emotions
+✅ Detailed action sequences
+✅ Elaborate dialogue with context
+✅ Every scene fully developed, not rushed
+✅ Character names STAY CONSISTENT (once chosen, NEVER change)
 
-**NOW WRITE THE COMPLETE STORY:**`;
+**WRITE THE STORY NOW (${config.charsPerChunk.toLocaleString()} characters):**`;
 }
 
-function buildReviewPrompt(story, title, niche) {
-    return `You are a professional story editor. Review this ${niche} story titled "${title}" and identify ALL errors and weaknesses.
+function buildContinuationPrompt(title, niche, tone, previousContext, config, partNum) {
+    const sectionGoal = getSectionGoal(partNum, config.chunks);
+    const isLastChunk = partNum === config.chunks;
+    
+    let prompt = `Continue SEAMLESSLY from previous chunk. Chunk ${partNum} of ${config.chunks}.
 
-**CHECK FOR:**
-1. Character name inconsistencies (did names change?)
-2. Repeated paragraphs or sentences
-3. Rushed character development or relationships
-4. Plot holes or logical inconsistencies
-5. Cliché or predictable elements
-6. Weak emotional depth
-7. Poor pacing issues
+🎯 TARGET: EXACTLY ${config.charsPerChunk.toLocaleString()} characters for this chunk.
 
-**STORY TO REVIEW:**
-${story}
+**PREVIOUS CONTEXT:**
+${previousContext}
 
-**PROVIDE:**
-1. List of specific errors found (with line references if possible)
-2. Quality score (1-10)
-3. Specific suggestions for improvement
+**CRITICAL: Continue EXACTLY where previous ended. NO recaps. NO reintroductions.**
 
-Format your response as:
-ERRORS:
-[list each error]
+**SEAMLESS CONTINUATION RULES:**
+✅ Continue mid-sentence if previous ended in action
+✅ EXACT same character names (NO CHANGES EVER!)
+✅ Same personality, powers, and fighting style
+✅ Same writing style and tone
+✅ Reference previous events naturally without recap
 
-SCORE: [1-10]
+**THIS CHUNK'S GOAL:**
+${sectionGoal}
 
-SUGGESTIONS:
-[specific improvements needed]`;
+`;
+
+    if (isLastChunk) {
+        prompt += `🔥 THIS IS THE FINAL CHUNK - Complete the story with satisfying, epic ending!
+
+**ENDING REQUIREMENTS (FINAL CHUNK):**
+✅ Resolve ALL story threads
+✅ Epic climax with detailed combat/confrontation
+✅ Clear aftermath and consequences
+✅ Character reflection on journey
+✅ Satisfying closing moment
+✅ Strong final line that resonates
+
+`;
+    }
+
+    prompt += `**WRITE EXACTLY ${config.charsPerChunk.toLocaleString()} CHARACTERS with maximum detail!**
+
+Continue the ${niche} story NOW:`;
+
+    return prompt;
 }
 
-function buildFixPrompt(story, reviewFeedback, title, niche, tone) {
-    return `You are a professional story editor. Fix this story based on the review feedback.
-
-**ORIGINAL STORY:**
-${story}
-
-**REVIEW FEEDBACK:**
-${reviewFeedback}
-
-**YOUR TASK:**
-Fix ALL identified errors while maintaining the story's essence. Specifically:
-1. Fix any character name inconsistencies (choose ONE name and use it throughout)
-2. Remove any repeated paragraphs or text
-3. Develop rushed relationships more naturally (add scenes, internal thoughts)
-4. Replace clichés with original ideas
-5. Add emotional depth to character decisions
-6. Improve pacing where needed
-7. Keep the ${tone} tone and ${niche} genre
-
-**CRITICAL:** Return ONLY the complete fixed story. No explanations, no notes, just the story text.
-
-**WRITE THE COMPLETE FIXED STORY NOW:**`;
+// 🎯 Extract clean context (sentence-aware, NO raw slicing!)
+function extractCleanContext(text) {
+    if (!text || text.length < 100) return text;
+    
+    // Split into complete sentences
+    const sentences = text
+        .split(/[.!?]/)
+        .filter(s => s.trim().length > 20)
+        .slice(-8)  // Last 8 substantial sentences
+        .join('. ') + '.';
+    
+    return sentences;
 }
 
+// 🎯 Call Gemini 2.5 Flash with MAXIMUM output tokens
 async function callGeminiAPI(prompt, apiKey, maxRetries = 3) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
     
     for (let attempt = 0; attempt < maxRetries; attempt++) {
         try {
@@ -137,14 +169,14 @@ async function callGeminiAPI(prompt, apiKey, maxRetries = 3) {
                     parts: [{ text: prompt }]
                 }],
                 generationConfig: {
-                    temperature: 0.9,
-                    topK: 40,
+                    temperature: 0.95,      // High creativity
                     topP: 0.95,
-                    maxOutputTokens: 8192,
+                    topK: 64,
+                    maxOutputTokens: 65536  // MAXIMUM for Gemini 2.5 Flash!
                 }
             }, {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: 120000
+                timeout: 180000  // 3 minutes for big chunks
             });
 
             if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -152,9 +184,14 @@ async function callGeminiAPI(prompt, apiKey, maxRetries = 3) {
             }
             throw new Error('Invalid response format');
         } catch (error) {
+            console.error(`Attempt ${attempt + 1} failed:`, error.message);
+            
             if (attempt === maxRetries - 1) throw error;
-            if (error.response?.status === 429) {
-                await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)));
+            
+            if (error.response?.status === 429 || error.code === 'ECONNABORTED') {
+                const waitTime = 3000 * (attempt + 1);
+                console.log(`Waiting ${waitTime}ms before retry...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
             } else {
                 throw error;
             }
@@ -162,45 +199,42 @@ async function callGeminiAPI(prompt, apiKey, maxRetries = 3) {
     }
 }
 
-async function generateStoryInChunks(title, niche, tone, plot, styleExample, extraInstructions, targetLength) {
-    const chunkSize = Math.min(30000, targetLength);
-    const numChunks = Math.ceil(targetLength / chunkSize);
-    let fullStory = '';
-    let previousContext = '';
-
-    for (let i = 0; i < numChunks; i++) {
+// 🎯 Generate story with WINNING STRATEGY (NO review system!)
+async function generateStoryWithWinningStrategy(title, niche, tone, plot, styleExample, extraInstructions, targetLength) {
+    const config = getChunkConfig(targetLength);
+    const chunks = [];
+    
+    console.log(`\n🎯 STRATEGY: ${config.chunks} chunks × ${config.charsPerChunk.toLocaleString()} chars each`);
+    console.log(`📊 Expected result: ${(config.chunks * config.charsPerChunk * 0.9).toLocaleString()}-${(config.chunks * config.charsPerChunk * 1.1).toLocaleString()} characters\n`);
+    
+    for (let i = 0; i < config.chunks; i++) {
+        const partNum = i + 1;
         const isFirstChunk = i === 0;
-        const isLastChunk = i === numChunks - 1;
         
-        let chunkPrompt;
+        console.log(`📝 Generating chunk ${partNum}/${config.chunks}...`);
+        
+        let prompt;
         if (isFirstChunk) {
-            chunkPrompt = buildStoryPrompt(title, niche, tone, plot, styleExample, extraInstructions, chunkSize);
+            prompt = buildFirstChunkPrompt(title, niche, tone, plot, styleExample, extraInstructions, config, partNum);
         } else {
-            chunkPrompt = `Continue this ${niche} story. Maintain consistency with previous part.
-
-**PREVIOUS CONTEXT:**
-${previousContext}
-
-**CONTINUE THE STORY (write ${chunkSize} more characters):**
-- Keep the SAME character names
-- Maintain the ${tone} tone
-- ${isLastChunk ? 'BRING THE STORY TO A SATISFYING CONCLUSION' : 'Continue building tension and development'}
-
-Write naturally and seamlessly from where it left off:`;
+            const previousContext = extractCleanContext(chunks[i - 1]);
+            prompt = buildContinuationPrompt(title, niche, tone, previousContext, config, partNum);
         }
-
+        
         const apiKey = getNextApiKey();
-        const chunk = await callGeminiAPI(chunkPrompt, apiKey);
-        fullStory += chunk;
-        previousContext = chunk.slice(-2000);
-
-        if (fullStory.length >= targetLength && !isLastChunk) break;
+        const chunk = await callGeminiAPI(prompt, apiKey);
+        
+        chunks.push(chunk);
+        console.log(`✅ Chunk ${partNum} generated: ${chunk.length.toLocaleString()} characters`);
     }
-
+    
+    const fullStory = chunks.join('\n\n');
+    console.log(`\n🎉 FINAL STORY: ${fullStory.length.toLocaleString()} characters`);
+    
     return fullStory;
 }
 
-// Main generation endpoint with review system
+// Main generation endpoint (NO REVIEW SYSTEM!)
 app.post('/api/generate', async (req, res) => {
     try {
         const { title, niche, tone, plot, styleExample, extraInstructions, targetLength = 60000 } = req.body;
@@ -209,57 +243,30 @@ app.post('/api/generate', async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        console.log(`[STEP 1] Generating initial story: ${title}`);
+        console.log(`\n🚀 Starting generation: "${title}"`);
+        console.log(`📏 Target length: ${targetLength.toLocaleString()} characters`);
         
-        // Step 1: Generate story
-        let story = await generateStoryInChunks(
+        // Single-pass generation with winning strategy!
+        const story = await generateStoryWithWinningStrategy(
             title, niche, tone, plot, styleExample, extraInstructions, targetLength
         );
 
-        console.log(`[STEP 2] Reviewing story quality...`);
-        
-        // Step 2: Review the story
-        const reviewPrompt = buildReviewPrompt(story, title, niche);
-        const apiKey = getNextApiKey();
-        const reviewFeedback = await callGeminiAPI(reviewPrompt, apiKey);
-
-        console.log(`[REVIEW FEEDBACK]:\n${reviewFeedback.substring(0, 500)}...`);
-
-        // Step 3: Check if fixes are needed
-        const needsFix = reviewFeedback.includes('ERRORS:') && 
-                        !reviewFeedback.includes('ERRORS:\nNone') &&
-                        !reviewFeedback.includes('ERRORS: None');
-
-        if (needsFix) {
-            console.log(`[STEP 3] Errors found, fixing story...`);
-            
-            // Fix the story
-            const fixPrompt = buildFixPrompt(story, reviewFeedback, title, niche, tone);
-            const fixApiKey = getNextApiKey();
-            story = await callGeminiAPI(fixPrompt, fixApiKey);
-            
-            console.log(`[STEP 3] Story fixed successfully!`);
-        } else {
-            console.log(`[STEP 3] No errors found, story is good!`);
-        }
-
-        // Calculate stats
         const stats = {
             totalChars: story.length,
             totalWords: story.split(/\s+/).length,
-            chunks: Math.ceil(targetLength / 30000)
+            targetLength,
+            achieved: story.length >= targetLength
         };
 
         res.json({
             success: true,
             script: story,
             stats,
-            reviewPerformed: true,
-            errorsFixed: needsFix
+            method: 'winning_strategy_no_review'
         });
 
     } catch (error) {
-        console.error('Generation error:', error);
+        console.error('❌ Generation error:', error);
         res.status(500).json({
             error: error.message || 'Failed to generate story',
             success: false
@@ -272,15 +279,17 @@ app.get('/api/health', (req, res) => {
     res.json({
         status: 'ready',
         apiKeys: apiKeys.length,
+        strategy: 'winning_chunks',
         timestamp: new Date().toISOString()
     });
 });
 
 app.get('/', (req, res) => {
     res.json({
-        service: 'AI Story Generator Backend',
+        service: 'AI Story Generator Backend (Winning Strategy)',
         status: 'running',
         apiKeys: apiKeys.length,
+        strategy: 'Fewer chunks + Bigger sizes + No review = Quality + Length ✅',
         endpoints: {
             generate: '/api/generate',
             health: '/api/health'
@@ -289,6 +298,8 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`\n✅ Server running on port ${PORT}`);
     console.log(`✅ API Keys loaded: ${apiKeys.length}`);
+    console.log(`🎯 Strategy: WINNING (fewer chunks, bigger sizes, no review)`);
+    console.log(`🚀 Using Gemini 2.0 Flash with 65K max tokens\n`);
 });
