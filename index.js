@@ -23,7 +23,7 @@ class KeyManager {
             }
         }
         
-        console.log(`✅ Loaded ${this.keys.length} API keys`);
+        console.log(`Loaded ${this.keys.length} API keys`);
     }
     
     getKey() {
@@ -34,7 +34,7 @@ class KeyManager {
             const key = this.keys[this.currentIndex];
             if (!this.blocked[key]) {
                 this.usage[key]++;
-                console.log(`🔑 Key #${this.currentIndex + 1} (${this.usage[key]} uses)`);
+                console.log(`Key ${this.currentIndex + 1} used ${this.usage[key]} times`);
                 this.currentIndex = (this.currentIndex + 1) % this.keys.length;
                 return key;
             }
@@ -46,113 +46,7 @@ class KeyManager {
     
     blockKey(key) {
         this.blocked[key] = true;
-        console.log('⚠️ Key blocked, switching...');RéessayerAid do that what i get Live tail
-GMT+1
-Menu
-info No lockfile found.
-warning story-generator-backend@1.0.0: No license field
-[1/5] Validating package.json...
-warning story-generator-backend@1.0.0: No license field
-[2/5] Resolving packages...
-[3/5] Fetching packages...
-[4/5] Linking dependencies...
-[5/5] Building fresh packages...
-success Saved lockfile.
-Done in 1.47s.
-==> Uploading build...
-==> Uploaded in 4.5s. Compression took 1.2s
-==> Build successful 🎉
-==> Deploying...
-==> Running 'node index.js'
-/opt/render/project/src/index.js:290
-SyntaxError: Unexpected end of input
-    at wrapSafe (node:internal/modules/cjs/loader:1691:18)
-    at Module._compile (node:internal/modules/cjs/loader:1734:20)
-    at Object..js (node:internal/modules/cjs/loader:1892:10)
-    at Module.load (node:internal/modules/cjs/loader:1480:32)
-    at Module._load (node:internal/modules/cjs/loader:1299:12)
-    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
-    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
-    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
-    at node:internal/main/run_main_module:33:47
-Node.js v25.1.0
-==> Exited with status 1
-==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
-==> Running 'node index.js'
-/opt/render/project/src/index.js:290
-SyntaxError: Unexpected end of input
-    at wrapSafe (node:internal/modules/cjs/loader:1691:18)
-    at Module._compile (node:internal/modules/cjs/loader:1734:20)
-    at Object..js (node:internal/modules/cjs/loader:1892:10)
-    at Module.load (node:internal/modules/cjs/loader:1480:32)
-    at Module._load (node:internal/modules/cjs/loader:1299:12)
-    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
-    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)
-    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
-    at node:internal/main/run_main_module:33:47
-Node.js v25.1.0Afficher plus😅 AH! The file got cut off! The code is incomplete!
-
-🔴 THE PROBLEM:
-The index.js file is missing the ending code. It stops at line 290 but needs more code to complete properly.
-
-✅ THE COMPLETE FIX:
-Go back to GitHub and replace the ENTIRE index.js with this COMPLETE, TESTED code:
-
-Go to: https://github.com/alaebaha20k-maker/story-generator-backend
-Click index.js
-Click pencil icon (✏️)
-Delete EVERYTHING
-Paste this COMPLETE code:
-
-javascriptconst express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const axios = require('axios');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-class KeyManager {
-    constructor() {
-        this.keys = [];
-        this.currentIndex = 0;
-        this.usage = {};
-        this.blocked = {};
-        
-        for (let i = 1; i <= 10; i++) {
-            const key = process.env[`GEMINI_KEY_${i}`];
-            if (key && key.trim()) {
-                this.keys.push(key.trim());
-                this.usage[key] = 0;
-                this.blocked[key] = false;
-            }
-        }
-        
-        console.log(`✅ Loaded ${this.keys.length} API keys`);
-    }
-    
-    getKey() {
-        if (this.keys.length === 0) throw new Error('No API keys configured');
-        
-        let attempts = 0;
-        while (attempts < this.keys.length) {
-            const key = this.keys[this.currentIndex];
-            if (!this.blocked[key]) {
-                this.usage[key]++;
-                console.log(`🔑 Key #${this.currentIndex + 1} (${this.usage[key]} uses)`);
-                this.currentIndex = (this.currentIndex + 1) % this.keys.length;
-                return key;
-            }
-            this.currentIndex = (this.currentIndex + 1) % this.keys.length;
-            attempts++;
-        }
-        throw new Error('All keys rate-limited');
-    }
-    
-    blockKey(key) {
-        this.blocked[key] = true;
-        console.log('⚠️ Key blocked, switching...');
+        console.log('Key blocked, switching to next key');
         setTimeout(() => { this.blocked[key] = false; }, 60000);
     }
 }
@@ -164,7 +58,7 @@ async function callGemini(prompt, retries = 0) {
     const apiKey = keyManager.getKey();
     
     try {
-        console.log(`📡 Calling Gemini (attempt ${retries + 1})...`);
+        console.log(`Calling Gemini API, attempt ${retries + 1}`);
         
         const response = await axios.post(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
@@ -183,7 +77,7 @@ async function callGemini(prompt, retries = 0) {
         const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (!text) throw new Error('Invalid response');
         
-        console.log(`✅ Generated ${text.length} chars`);
+        console.log(`Generated ${text.length} characters`);
         return text;
         
     } catch (error) {
@@ -236,7 +130,7 @@ app.post('/api/generate', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Style example too short (min 500 chars)' });
         }
         
-        console.log(`📝 Generating: "${title}"`);
+        console.log(`Generating story: ${title}`);
         
         const length = targetLength || 60000;
         let chunks, charsPerChunk;
@@ -256,7 +150,7 @@ app.post('/api/generate', async (req, res) => {
             if (i === 0) {
                 prompt = `You are a MASTER storyteller creating ${tone} content in the ${niche} niche.
 
-🎯 TARGET: EXACTLY ${charsPerChunk.toLocaleString()} characters (Part ${partNum}/${chunks})
+TARGET: EXACTLY ${charsPerChunk.toLocaleString()} characters (Part ${partNum}/${chunks})
 
 STYLE REFERENCE (MATCH EXACTLY):
 ${styleExample.substring(0, 5000)}
@@ -269,15 +163,15 @@ ${extraInstructions ? `Instructions: ${extraInstructions}` : ''}
 ${chunks === 1 ? 'Write COMPLETE story.' : `Part ${partNum}/${chunks} - Write OPENING with hook.`}
 
 CRITICAL RULES:
-❌ NO labels/headers
-❌ NO name changes
-✅ Match style EXACTLY
-✅ Create UNIQUE hook (contextual to story)
-✅ All 5 senses
-✅ Natural dialogue
-✅ Show emotions physically
-✅ Varied sentences
-✅ Build tension
+- NO labels or headers
+- NO name changes
+- Match style EXACTLY
+- Create UNIQUE hook contextual to story
+- All 5 senses
+- Natural dialogue
+- Show emotions physically
+- Varied sentences
+- Build tension
 
 WRITE EXACTLY ${charsPerChunk.toLocaleString()} CHARACTERS!
 
@@ -290,14 +184,14 @@ Begin (no title):`;
 PREVIOUS ENDED:
 "${prev}"
 
-🎯 EXACTLY ${charsPerChunk.toLocaleString()} characters
+TARGET: EXACTLY ${charsPerChunk.toLocaleString()} characters
 
 ${partNum === chunks ? 'FINAL PART - Complete with satisfying ending!' : `Part ${partNum} - Continue tension.`}
 
-✅ Continue where previous ended
-✅ Same names/personalities
-✅ Same style/tone
-✅ Natural flow
+- Continue where previous ended
+- Same names and personalities
+- Same style and tone
+- Natural flow
 
 ${partNum === chunks ? 'ENDING: Wrap all threads, character arc, emotional satisfaction, strong close.' : ''}
 
@@ -308,11 +202,11 @@ Continue:`;
             
             const chunk = await callGemini(prompt);
             generatedChunks.push(chunk);
-            console.log(`✅ Part ${partNum}/${chunks}: ${chunk.length} chars`);
+            console.log(`Part ${partNum}/${chunks}: ${chunk.length} chars`);
         }
         
         const finalScript = generatedChunks.join('\n\n');
-        console.log(`🎉 Total: ${finalScript.length} chars`);
+        console.log(`Total generated: ${finalScript.length} chars`);
         
         res.json({
             success: true,
@@ -338,7 +232,7 @@ app.post('/api/auto-generate', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Missing data' });
         }
         
-        console.log(`🤖 Auto-generating: "${title}"`);
+        console.log(`Auto-generating setup for: ${title}`);
         
         const prompt = `Generate story setup for:
 
@@ -369,12 +263,7 @@ Make contextual, realistic. 2-3 characters max.`;
 });
 
 app.listen(PORT, () => {
-    console.log(`
-╔════════════════════════════════╗
-║  🎬 STORY GENERATOR API       ║
-║  ✅ Port: ${PORT}                 ║
-║  🔒 Keys: ${keyManager.keys.length}                   ║
-║  🚀 READY!                     ║
-╚════════════════════════════════╝
-    `);
+    console.log('Story Generator API is running on port ' + PORT);
+    console.log('API Keys loaded: ' + keyManager.keys.length);
+    console.log('Status: READY');
 });
